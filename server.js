@@ -46,10 +46,22 @@ mongoose
   .then(() => console.log('✅ MongoDB connected'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
-// Mount routes
-app.use('/api/blogroutes',    blogRoutes);
-app.use('/api/projectroutes', projectRoutes);
-app.use('/api/messageroutes', messageRoutes);
+// —— ROOT ping endpoint — so GET / won’t 404 ——
+app.get('/', (req, res) => {
+  res.json({ message: '🚀 Portfolio Admin Backend is up!' });
+});
+
+// —— MOUNT YOUR ROUTES ——
+// we mount each router twice: once under /api/... (unchanged) and once
+// under its bare path, in case the frontend is hitting e.g. `/projectroutes`
+[
+  { path: '/blogroutes',    router: blogRoutes    },
+  { path: '/projectroutes', router: projectRoutes },
+  { path: '/messageroutes', router: messageRoutes }
+].forEach(({ path, router }) => {
+  app.use(path, router);
+  app.use(`/api${path}`, router);
+});
 
 // Fallbacks
 app.use((req, res) => res.status(404).json({ error: 'Route not found' }));
@@ -61,8 +73,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
+// Export for Vercel, but still allow `node server.js` locally
 module.exports = app;
-
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => console.log(`🚀 Server running on ${PORT}`));
