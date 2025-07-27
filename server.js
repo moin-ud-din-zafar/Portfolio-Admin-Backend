@@ -12,18 +12,17 @@ const messageRoutes = require('./routes/messageroutes');
 const app = express();
 
 // — ALLOW CORS FOR EVERY ORIGIN —
-// This will add the header Access-Control-Allow-Origin: *
-// to every response, so any frontend can consume your API.
+// Sends `Access-Control-Allow-Origin: *` on all responses
 app.use(cors());
 
-// If you need credentials (cookies/auth), instead use:
+// If you later need cookies/auth, switch to:
 // app.use(cors({ origin: true, credentials: true }));
 
 // Body parsers
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static uploads
+// Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Connect to MongoDB
@@ -40,7 +39,7 @@ app.get('/', (req, res) => {
   res.json({ message: '🚀 Portfolio Admin Backend is up!' });
 });
 
-// Mount routers under both /<route> and /api/<route>
+// Mount your routers under both /<route> and /api/<route>
 [
   { path: '/blogroutes',    router: blogRoutes    },
   { path: '/projectroutes', router: projectRoutes },
@@ -61,7 +60,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Export for Vercel; locally you can also run `node server.js`
+// Export for Vercel; also support `node server.js` locally
 module.exports = app;
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
