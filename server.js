@@ -11,49 +11,36 @@ const messageRoutes = require('./routes/messageroutes');
 
 const app = express();
 
-// CORS whitelist
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'http://localhost:5174'
-];
+// — ALLOW CORS FOR EVERY ORIGIN —
+// This will add the header Access-Control-Allow-Origin: *
+// to every response, so any frontend can consume your API.
+app.use(cors());
 
-app.use(cors({
-  origin(origin, cb) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      cb(null, true);
-    } else {
-      cb(new Error(`CORS Block: ${origin}`));
-    }
-  },
-  methods: ['GET','POST','PUT','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization']
-}));
+// If you need credentials (cookies/auth), instead use:
+// app.use(cors({ origin: true, credentials: true }));
 
 // Body parsers
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Static uploads
+// Serve static uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// MongoDB
+// Connect to MongoDB
 mongoose
   .connect(process.env.MONGO_URI, {
     useNewUrlParser:    true,
-    useUnifiedTopology: true
+    useUnifiedTopology: true,
   })
   .then(() => console.log('✅ MongoDB connected'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
-// —— ROOT ping endpoint — so GET / won’t 404 ——
+// Health‑check endpoint
 app.get('/', (req, res) => {
   res.json({ message: '🚀 Portfolio Admin Backend is up!' });
 });
 
-// —— MOUNT YOUR ROUTES ——
-// we mount each router twice: once under /api/... (unchanged) and once
-// under its bare path, in case the frontend is hitting e.g. `/projectroutes`
+// Mount routers under both /<route> and /api/<route>
 [
   { path: '/blogroutes',    router: blogRoutes    },
   { path: '/projectroutes', router: projectRoutes },
@@ -63,17 +50,18 @@ app.get('/', (req, res) => {
   app.use(`/api${path}`, router);
 });
 
-// Fallbacks
-app.use((req, res) => res.status(404).json({ error: 'Route not found' }));
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
+
+// Global error handler
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.message || err);
-  if (err.message && err.message.startsWith('CORS Block')) {
-    return res.status(401).json({ error: err.message });
-  }
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Export for Vercel, but still allow `node server.js` locally
+// Export for Vercel; locally you can also run `node server.js`
 module.exports = app;
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
