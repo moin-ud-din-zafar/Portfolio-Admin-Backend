@@ -1,84 +1,73 @@
-// controllers/blogcontroller.js
-const Blog   = require('../models/Blog');
-const multer = require('multer');
-const path   = require('path');
+const Blog = require('../models/Blog');
+const path = require('path');
+const fs = require('fs');
 
-// Multer setup
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename:    (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `feature-${Date.now()}${ext}`);
+// Create with image (express-fileupload version)
+exports.createWithImage = async (req, res, next) => {
+  console.log('→ [createWithImage] payload:', {
+    file: req.files?.file?.name,
+    body: req.body
+  });
+
+  if (!req.files || !req.files.file) {
+    return res.status(400).json({ error: 'Image file is required' });
   }
-});
-const upload = multer({ storage }).single('file');
 
-// Create with image
-exports.createWithImage = [
-  (req, res, next) => {
-    upload(req, res, err => {
-      if (err instanceof multer.MulterError) {
-        return res.status(400).json({ error: 'Upload error', details: err.message });
-      } else if (err) {
-        return res.status(500).json({ error: 'Server error during file upload' });
-      }
-      next();
-    });
-  },
-  async (req, res, next) => {
-    console.log('→ [createWithImage] payload:', {
-      file: req.file?.filename,
-      body: req.body
-    });
+  const file = req.files.file;
+  const ext = path.extname(file.name);
+  const filename = `feature-${Date.now()}${ext}`;
+  const uploadPath = path.join(__dirname, '..', 'uploads', filename);
 
-    if (!req.file) {
-      return res.status(400).json({ error: 'Image file is required' });
-    }
+  try {
+    await file.mv(uploadPath);
+  } catch (err) {
+    console.error('!! File upload failed:', err);
+    return res.status(500).json({ error: 'Server error during file upload' });
+  }
 
-    let tags = [];
-    if (req.body.tags) {
-      try {
-        tags = JSON.parse(req.body.tags);
-      } catch {
-        tags = req.body.tags.split(',').map(t => t.trim());
-      }
-    }
-
-    const { title, excerpt, content, publishDate } = req.body;
-    if (!title || !excerpt || !content || !publishDate) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    const wordCount = content.trim().split(/\s+/).length;
-    const readTime  = `${Math.ceil(wordCount / 200)} min read`;
-
-    const newBlogData = {
-      title,
-      excerpt,
-      content,
-      tags,
-      publishDate: new Date(publishDate),
-      imageUrl: `/uploads/${req.file.filename}`,
-      readTime,
-      likes: 0,
-      comments: 0
-    };
-
+  let tags = [];
+  if (req.body.tags) {
     try {
-      const newBlog = new Blog(newBlogData);
-      const saved   = await newBlog.save();
-      console.log('→ [createWithImage] saved blog ID:', saved._id);
-      res.status(201).json(saved);
-    } catch (err) {
-      if (err.name === 'ValidationError') {
-        const messages = Object.values(err.errors).map(e => e.message);
-        return res.status(400).json({ error: 'Validation failed', details: messages });
-      }
-      console.error('!! [createWithImage] error saving:', err);
-      next(err);
+      tags = JSON.parse(req.body.tags);
+    } catch {
+      tags = req.body.tags.split(',').map(t => t.trim());
     }
   }
-];
+
+  const { title, excerpt, content, publishDate } = req.body;
+  if (!title || !excerpt || !content || !publishDate) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  const wordCount = content.trim().split(/\s+/).length;
+  const readTime = `${Math.ceil(wordCount / 200)} min read`;
+
+  const newBlogData = {
+    title,
+    excerpt,
+    content,
+    tags,
+    publishDate: new Date(publishDate),
+    imageUrl: `/uploads/${filename}`,
+    readTime,
+    likes: 0,
+    comments: 0
+  };
+
+  try {
+    const newBlog = new Blog(newBlogData);
+    const saved = await newBlog.save();
+    console.log('→ [createWithImage] saved blog ID:', saved._id);
+    res.status(201).json(saved);
+  } catch (err) {
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ error: 'Validation failed', details: messages });
+    }
+    console.error('!! [createWithImage] error saving:', err);
+    next(err);
+  }
+};
 
 // GET all
 exports.getAll = async (req, res, next) => {

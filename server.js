@@ -1,11 +1,11 @@
-// server.js
 require('dotenv').config();
-const express  = require('express');
+const express = require('express');
 const mongoose = require('mongoose');
-const cors     = require('cors');
-const path     = require('path');
+const cors = require('cors');
+const path = require('path');
+const fileUpload = require('express-fileupload');
 
-const blogRoutes    = require('./routes/blogroutes');
+const blogRoutes = require('./routes/blogroutes');
 const projectRoutes = require('./routes/projectroutes');
 const messageRoutes = require('./routes/messageroutes');
 
@@ -17,48 +17,52 @@ app.use((req, res, next) => {
   next();
 });
 
-// CORS: reflect the request’s Origin header back in the response
+// CORS
 app.use(cors({
-  origin: true,       // Echoes back the request’s Origin in Access-Control-Allow-Origin
-  credentials: true,  // Allow cookies/auth if you use them
+  origin: true,
+  credentials: true,
 }));
 
 // Body parsers
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve uploaded files
+// File upload middleware
+app.use(fileUpload({
+  useTempFiles: true,
+  tempFileDir: '/tmp/',
+  createParentPath: true,
+}));
+
+// Serve uploaded images
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // MongoDB connection
-mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser:    true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log('✅ MongoDB connected'))
-  .catch(err => console.error('❌ MongoDB connection error:', err));
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log('✅ MongoDB connected'))
+.catch(err => console.error('❌ MongoDB connection error:', err));
 
-// Health-check endpoints
-app.get('/',    (req, res) => res.json({ message: 'Root up!!!' }));
+// Health-check
+app.get('/', (req, res) => res.json({ message: 'Root up!!!' }));
 app.get('/api', (req, res) => res.json({ message: 'API up!!!' }));
 
-// Mount blog routes under both /blogs and /api/blogs
-app.use('/blogs',    blogRoutes);
+// Routes
+app.use('/blogs', blogRoutes);
 app.use('/api/blogs', blogRoutes);
-
-// Mount other routes
 app.use('/api/projects', projectRoutes);
 app.use('/api/messages', messageRoutes);
 
-// 404 & global error handlers
+// 404 & Error handling
 app.use((req, res) => res.status(404).json({ error: 'Route not found' }));
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Export & start server
+// Start server
 module.exports = app;
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
