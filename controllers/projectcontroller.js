@@ -1,20 +1,8 @@
-// src/controllers/projectcontroller.js
 const Project = require('../models/Project');
-const multer  = require('multer');
 const path    = require('path');
+const fs      = require('fs');
 
-// — Multer setup for `image` field
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename:    (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `project-${Date.now()}${ext}`);
-  }
-});
-const upload = multer({ storage }).single('image');
-
-
-// GET /api/projectroutes/
+// GET /api/projects
 exports.getAll = async (req, res) => {
   try {
     const projects = await Project.find().sort({ createdAt: -1 });
@@ -25,73 +13,90 @@ exports.getAll = async (req, res) => {
   }
 };
 
+// POST /api/projects  (with optional image upload)
+exports.create = async (req, res) => {
+  console.log('→ [projects.create] req.body:', req.body);
+  console.log('→ [projects.create] req.files:', req.files);
 
-// POST /api/projectroutes/  (with optional image upload)
-exports.create = [
-  upload,  // parse multipart/form-data first
-  async (req, res) => {
-    // 1) Parse stats: either req.body.stats as string or object
-    let stats = {};
-    if (req.body.stats) {
-      if (typeof req.body.stats === 'string') {
-        try {
-          stats = JSON.parse(req.body.stats);
-        } catch (e) {
-          return res.status(400).json({ error: 'Invalid stats JSON' });
-        }
-      } else {
-        stats = req.body.stats;
-      }
-    }
+  // 1) Handle file upload if provided
+  let imageUrl = '';
+  if (req.files && req.files.image) {
+    const file = req.files.image;
+    // ensure upload dir exists locally (for dev)
+    const uploadDir = path.join(__dirname, '..', 'uploads');
+    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+    const ext      = path.extname(file.name);
+    const filename = `project-${Date.now()}${ext}`;
+    const dest     = path.join(uploadDir, filename);
 
-    // 2) Required‐field check
-    if (
-      !req.body.title ||
-      !req.body.description ||
-      !stats.users ||
-      !stats.performance ||
-      !stats.rating
-    ) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    // 3) Build the project payload
-    const data = {
-      title:       req.body.title,
-      description: req.body.description,
-      image:       req.file ? `/uploads/${req.file.filename}` : '',
-      tags:        Array.isArray(req.body.tags)
-                     ? req.body.tags
-                     : req.body.tags
-                       ? req.body.tags.split(',').map(t => t.trim())
-                       : [],
-      demoUrl:     req.body.demoUrl || '',
-      codeUrl:     req.body.codeUrl || '',
-      featured:    req.body.featured === 'true' || req.body.featured === true,
-      stats       // already validated above
-    };
-
-    // 4) Save and handle errors
     try {
-      const proj  = new Project(data);
-      const saved = await proj.save();
-      res.status(201).json(saved);
-
-    } catch (err) {
-      if (err.name === 'ValidationError') {
-        return res
-          .status(400)
-          .json({ error: 'Validation failed', details: err.message });
-      }
-      console.error('Error creating project:', err);
-      res.status(500).json({ error: 'Internal server error' });
+      await file.mv(dest);
+      imageUrl = `/uploads/${filename}`;
+    } catch (mvErr) {
+      console.error('Error moving uploaded file:', mvErr);
+      return res.status(500).json({ error: 'Server error during file upload' });
     }
   }
-];
 
+  // 2) Parse stats
+  let stats = {};
+  if (req.body.stats) {
+    if (typeof req.body.stats === 'string') {
+      try {
+        stats = JSON.parse(req.body.stats);
+      } catch {
+        return res.status(400).json({ error: 'Invalid stats JSON' });
+      }
+    } else {
+      stats = req.body.stats;
+    }
+  }
 
-// PUT /api/projectroutes/:id
+  // 3) Validate required fields
+  if (
+    !req.body.title ||
+    !req.body.description ||
+    !stats.users ||
+    !stats.performance ||
+    !stats.rating
+  ) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  // 4) Build data payload
+  const data = {
+    title:       req.body.title,
+    description: req.body.description,
+    image:       imageUrl,
+    tags:        Array.isArray(req.body.tags)
+                     ? req.body.tags
+                     : req.body.tags
+                       ? req.body.tags.split(',').map(t => t.trim()).filter(Boolean)
+                       : [],
+    demoUrl:     req.body.demoUrl || '',
+    codeUrl:     req.body.codeUrl || '',
+    featured:    req.body.featured === 'true' || req.body.featured === true,
+    stats,      // from step 2
+  };
+
+  // 5) Save and respond
+  try {
+    const proj  = new Project(data);
+    const saved = await proj.save();
+    res.status(201).json(saved);
+  } catch (err) {
+    console.error('Error creating project:', err);
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({ error: 'Validation failed', details: err.message });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// PUT /api/projects/:id
 exports.update = async (req, res) => {
+  console.log(`→ [projects.update] ID ${req.params.id}`, req.body);
+
   try {
     const updated = await Project.findByIdAndUpdate(
       req.params.id,
@@ -102,7 +107,6 @@ exports.update = async (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
     res.json(updated);
-
   } catch (err) {
     console.error(`Error updating project ${req.params.id}:`, err);
     if (err.name === 'ValidationError') {
@@ -115,16 +119,15 @@ exports.update = async (req, res) => {
   }
 };
 
-
-// DELETE /api/projectroutes/:id
+// DELETE /api/projects/:id
 exports.remove = async (req, res) => {
+  console.log(`→ [projects.remove] ID ${req.params.id}`);
   try {
     const deleted = await Project.findByIdAndDelete(req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: 'Project not found' });
     }
     res.json({ msg: 'Project deleted' });
-
   } catch (err) {
     console.error(`Error deleting project ${req.params.id}:`, err);
     if (err.kind === 'ObjectId') {
