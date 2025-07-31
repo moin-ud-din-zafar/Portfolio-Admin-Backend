@@ -1,6 +1,13 @@
-const Project = require('../models/Project');
-const path    = require('path');
-const fs      = require('fs');
+// controllers/projectcontroller.js
+const Project    = require('../models/Project');
+const cloudinary = require('cloudinary').v2;
+
+// Configure Cloudinary (reuse same env vars as blogs)
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 // GET /api/projects
 exports.getAll = async (req, res) => {
@@ -18,22 +25,17 @@ exports.create = async (req, res) => {
   console.log('→ [projects.create] req.body:', req.body);
   console.log('→ [projects.create] req.files:', req.files);
 
-  // 1) Handle file upload if provided
+  // 1) Upload image to Cloudinary if provided
   let imageUrl = '';
   if (req.files && req.files.image) {
-    const file = req.files.image;
-    // ensure upload dir exists locally (for dev)
-    const uploadDir = path.join(__dirname, '..', 'uploads');
-    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
-    const ext      = path.extname(file.name);
-    const filename = `project-${Date.now()}${ext}`;
-    const dest     = path.join(uploadDir, filename);
-
     try {
-      await file.mv(dest);
-      imageUrl = `/uploads/${filename}`;
-    } catch (mvErr) {
-      console.error('Error moving uploaded file:', mvErr);
+      const uploadRes = await cloudinary.uploader.upload(
+        req.files.image.tempFilePath,
+        { folder: 'project-images', resource_type: 'image' }
+      );
+      imageUrl = uploadRes.secure_url;
+    } catch (err) {
+      console.error('Cloudinary upload failed:', err);
       return res.status(500).json({ error: 'Server error during file upload' });
     }
   }
@@ -67,7 +69,7 @@ exports.create = async (req, res) => {
   const data = {
     title:       req.body.title,
     description: req.body.description,
-    image:       imageUrl,
+    image:       imageUrl,   // ← now from Cloudinary
     tags:        Array.isArray(req.body.tags)
                      ? req.body.tags
                      : req.body.tags
@@ -76,7 +78,7 @@ exports.create = async (req, res) => {
     demoUrl:     req.body.demoUrl || '',
     codeUrl:     req.body.codeUrl || '',
     featured:    req.body.featured === 'true' || req.body.featured === true,
-    stats,      // from step 2
+    stats,      // parsed above
   };
 
   // 5) Save and respond
