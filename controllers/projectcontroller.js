@@ -1,13 +1,61 @@
-// controllers/projectcontroller.js
 const Project    = require('../models/Project');
 const cloudinary = require('cloudinary').v2;
 
-// Configure Cloudinary (reuse same env vars as blogs)
+// Cloudinary config (reuse env)
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key:    process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
+
+// POST /api/projects
+exports.create = async (req, res) => {
+  try {
+    // 1) Upload image
+    let image = '';
+    if (req.files?.image) {
+      const r = await cloudinary.uploader.upload(
+        req.files.image.tempFilePath,
+        { folder: 'projects', resource_type: 'image' }
+      );
+      image = r.secure_url;
+    }
+
+    // 2) Parse stats
+    let stats = {};
+    if (req.body.stats) {
+      stats = typeof req.body.stats === 'string'
+        ? JSON.parse(req.body.stats)
+        : req.body.stats;
+    }
+
+    // 3) Validate
+    const { title, description, demoUrl, codeUrl, featured, tags } = req.body;
+    if (!title || !description || !stats.users || !stats.performance || !stats.rating) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // 4) Build & save
+    const p = new Project({
+      title, description, image,
+      tags: Array.isArray(tags)
+        ? tags
+        : tags
+          ? tags.split(',').map(t => t.trim())
+          : [],
+      demoUrl: demoUrl || '',
+      codeUrl: codeUrl || '',
+      featured: featured==='true'||featured===true,
+      stats
+    });
+    const saved = await p.save();
+    res.status(201).json(saved);
+
+  } catch (err) {
+    console.error('createProject ERROR:', err.stack || err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
 
 // GET /api/projects
 exports.getAll = async (req, res) => {
@@ -15,126 +63,46 @@ exports.getAll = async (req, res) => {
     const projects = await Project.find().sort({ createdAt: -1 });
     res.json(projects);
   } catch (err) {
-    console.error('Error fetching projects:', err);
+    console.error('getAllProjects ERROR:', err.stack || err);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
 
-// POST /api/projects  (with optional image upload)
-exports.create = async (req, res) => {
-  console.log('→ [projects.create] req.body:', req.body);
-  console.log('→ [projects.create] req.files:', req.files);
-
-  // 1) Upload image to Cloudinary if provided
-  let imageUrl = '';
-  if (req.files && req.files.image) {
-    try {
-      const uploadRes = await cloudinary.uploader.upload(
-        req.files.image.tempFilePath,
-        { folder: 'project-images', resource_type: 'image' }
-      );
-      imageUrl = uploadRes.secure_url;
-    } catch (err) {
-      console.error('Cloudinary upload failed:', err);
-      return res.status(500).json({ error: 'Server error during file upload' });
-    }
-  }
-
-  // 2) Parse stats
-  let stats = {};
-  if (req.body.stats) {
-    if (typeof req.body.stats === 'string') {
-      try {
-        stats = JSON.parse(req.body.stats);
-      } catch {
-        return res.status(400).json({ error: 'Invalid stats JSON' });
-      }
-    } else {
-      stats = req.body.stats;
-    }
-  }
-
-  // 3) Validate required fields
-  if (
-    !req.body.title ||
-    !req.body.description ||
-    !stats.users ||
-    !stats.performance ||
-    !stats.rating
-  ) {
-    return res.status(400).json({ error: 'Missing required fields' });
-  }
-
-  // 4) Build data payload
-  const data = {
-    title:       req.body.title,
-    description: req.body.description,
-    image:       imageUrl,   // ← now from Cloudinary
-    tags:        Array.isArray(req.body.tags)
-                     ? req.body.tags
-                     : req.body.tags
-                       ? req.body.tags.split(',').map(t => t.trim()).filter(Boolean)
-                       : [],
-    demoUrl:     req.body.demoUrl || '',
-    codeUrl:     req.body.codeUrl || '',
-    featured:    req.body.featured === 'true' || req.body.featured === true,
-    stats,      // parsed above
-  };
-
-  // 5) Save and respond
+// GET /api/projects/:id
+exports.getOne = async (req, res) => {
   try {
-    const proj  = new Project(data);
-    const saved = await proj.save();
-    res.status(201).json(saved);
+    const p = await Project.findById(req.params.id);
+    if (!p) return res.status(404).json({ error: 'Not found' });
+    res.json(p);
   } catch (err) {
-    console.error('Error creating project:', err);
-    if (err.name === 'ValidationError') {
-      return res.status(400).json({ error: 'Validation failed', details: err.message });
-    }
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('getOneProject ERROR:', err.stack || err);
+    res.status(400).json({ error: 'Invalid ID' });
   }
 };
 
 // PUT /api/projects/:id
 exports.update = async (req, res) => {
-  console.log(`→ [projects.update] ID ${req.params.id}`, req.body);
-
   try {
-    const updated = await Project.findByIdAndUpdate(
-      req.params.id,
-      req.body,
+    const u = await Project.findByIdAndUpdate(
+      req.params.id, req.body,
       { new: true, runValidators: true }
     );
-    if (!updated) {
-      return res.status(404).json({ error: 'Project not found' });
-    }
-    res.json(updated);
+    if (!u) return res.status(404).json({ error: 'Not found' });
+    res.json(u);
   } catch (err) {
-    console.error(`Error updating project ${req.params.id}:`, err);
-    if (err.name === 'ValidationError') {
-      return res.status(400).json({ error: 'Validation failed', details: err.message });
-    }
-    if (err.kind === 'ObjectId') {
-      return res.status(400).json({ error: 'Invalid project ID' });
-    }
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('updateProject ERROR:', err.stack || err);
+    res.status(400).json({ error: 'Invalid data or ID' });
   }
 };
 
 // DELETE /api/projects/:id
 exports.remove = async (req, res) => {
-  console.log(`→ [projects.remove] ID ${req.params.id}`);
   try {
-    const deleted = await Project.findByIdAndDelete(req.params.id);
-    if (!deleted) {
-      return res.status(404).json({ error: 'Project not found' });
-    }
-    res.json({ msg: 'Project deleted' });
+    const d = await Project.findByIdAndDelete(req.params.id);
+    if (!d) return res.status(404).json({ error: 'Not found' });
+    res.json({ message: 'Deleted' });
   } catch (err) {
-    console.error(`Error deleting project ${req.params.id}:`, err);
-    if (err.kind === 'ObjectId') {
-      return res.status(400).json({ error: 'Invalid project ID' });
-    }
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('deleteProject ERROR:', err.stack || err);
+    res.status(400).json({ error: 'Invalid ID' });
   }
 };
