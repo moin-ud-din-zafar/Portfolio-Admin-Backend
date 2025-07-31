@@ -40,8 +40,8 @@ mongoose
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
 // Health-check endpoints
-app.get('/',    (req, res) => res.json({ message: 'Root up!' }));
-app.get('/api', (req, res) => res.json({ message: 'API up!' }));
+app.get('/',    (req, res) => res.json({ message: 'Root up!!!' }));
+app.get('/api', (req, res) => res.json({ message: 'API up!!!' }));
 
 // Mount blog routes under both /blogs and /api/blogs
 app.use('/blogs',    blogRoutes);
