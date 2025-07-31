@@ -1,3 +1,4 @@
+// server.js
 require('dotenv').config();
 const express  = require('express');
 const mongoose = require('mongoose');
@@ -16,9 +17,11 @@ app.use((req, res, next) => {
   next();
 });
 
-// CORS
-const FRONTEND_URL = 'https://portfolio-admin-frontend-alpha.vercel.app';
-app.use(cors({ origin: FRONTEND_URL, credentials: true }));
+// CORS: reflect the request’s Origin header back in the response
+app.use(cors({
+  origin: true,       // Echoes back the request’s Origin in Access-Control-Allow-Origin
+  credentials: true,  // Allow cookies/auth if you use them
+}));
 
 // Body parsers
 app.use(express.json());
@@ -27,7 +30,7 @@ app.use(express.urlencoded({ extended: true }));
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// MongoDB
+// MongoDB connection
 mongoose
   .connect(process.env.MONGO_URI, {
     useNewUrlParser:    true,
@@ -36,26 +39,26 @@ mongoose
   .then(() => console.log('✅ MongoDB connected'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
-// Health-checks
-app.get('/',   (req, res) => res.json({ message: 'Root up!' }));
+// Health-check endpoints
+app.get('/',    (req, res) => res.json({ message: 'Root up!' }));
 app.get('/api', (req, res) => res.json({ message: 'API up!' }));
 
-// ── MOUNT BLOG ROUTES BOTH WAYS ──
+// Mount blog routes under both /blogs and /api/blogs
 app.use('/blogs',    blogRoutes);
 app.use('/api/blogs', blogRoutes);
 
-// Mount the others however you like
+// Mount other routes
 app.use('/api/projects', projectRoutes);
 app.use('/api/messages', messageRoutes);
 
-// 404 & error handlers
+// 404 & global error handlers
 app.use((req, res) => res.status(404).json({ error: 'Route not found' }));
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Export & start
+// Export & start server
 module.exports = app;
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
