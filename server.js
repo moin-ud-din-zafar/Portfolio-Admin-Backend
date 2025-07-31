@@ -1,4 +1,3 @@
-// server.js
 require('dotenv').config();
 const express  = require('express');
 const mongoose = require('mongoose');
@@ -11,27 +10,24 @@ const messageRoutes = require('./routes/messageroutes');
 
 const app = express();
 
-// — Log every request (for Vercel logs)
+// Log every request
 app.use((req, res, next) => {
-  console.log(`🔔 ${req.method} ${req.originalUrl}`);
+  console.log(`→ ${req.method} ${req.originalUrl}`);
   next();
 });
 
-// — CORS
+// CORS
 const FRONTEND_URL = 'https://portfolio-admin-frontend-alpha.vercel.app';
-app.use(cors({
-  origin: FRONTEND_URL,
-  credentials: true,
-}));
+app.use(cors({ origin: FRONTEND_URL, credentials: true }));
 
-// — Body parsers
+// Body parsers
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// — Serve uploads
+// Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// — MongoDB
+// MongoDB
 mongoose
   .connect(process.env.MONGO_URI, {
     useNewUrlParser:    true,
@@ -40,24 +36,26 @@ mongoose
   .then(() => console.log('✅ MongoDB connected'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
-// — Health‐check at GET /api
-app.get('/api', (req, res) => {
-  res.json({ message: 'API up!' });
-});
+// Health-checks
+app.get('/',   (req, res) => res.json({ message: 'Root up!' }));
+app.get('/api', (req, res) => res.json({ message: 'API up!' }));
 
-// — Mount your routers under /api
-app.use('/api/blogs',    blogRoutes);
+// ── MOUNT BLOG ROUTES BOTH WAYS ──
+app.use('/blogs',    blogRoutes);
+app.use('/api/blogs', blogRoutes);
+
+// Mount the others however you like
 app.use('/api/projects', projectRoutes);
 app.use('/api/messages', messageRoutes);
 
-// — 404 & global error handlers
+// 404 & error handlers
 app.use((req, res) => res.status(404).json({ error: 'Route not found' }));
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// — Export / start
+// Export & start
 module.exports = app;
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
