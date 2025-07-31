@@ -1,3 +1,4 @@
+// server.js
 require('dotenv').config();
 const express  = require('express');
 const mongoose = require('mongoose');
@@ -10,7 +11,7 @@ const messageRoutes = require('./routes/messageroutes');
 
 const app = express();
 
-// — Log every request so we can debug 404s
+// — Log every request (for Vercel logs)
 app.use((req, res, next) => {
   console.log(`🔔 ${req.method} ${req.originalUrl}`);
   next();
@@ -39,12 +40,12 @@ mongoose
   .then(() => console.log('✅ MongoDB connected'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
-// — Health-check at GET /api
+// — Health‐check at GET /api
 app.get('/api', (req, res) => {
   res.json({ message: 'API up!' });
 });
 
-// — Mount routers under /api/*
+// — Mount your routers under /api
 app.use('/api/blogs',    blogRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/messages', messageRoutes);
