@@ -1,4 +1,3 @@
-// server.js
 require('dotenv').config();
 const express  = require('express');
 const mongoose = require('mongoose');
@@ -11,21 +10,21 @@ const messageRoutes = require('./routes/messageroutes');
 
 const app = express();
 
-// — CORS: only allow your Vercel front‑end —
+// — CORS
 const FRONTEND_URL = 'https://portfolio-admin-frontend-alpha.vercel.app';
 app.use(cors({
-  origin: FRONTEND_URL,      // only this exact origin
-  credentials: true,         // if you use cookies/auth
+  origin: FRONTEND_URL,
+  credentials: true,
 }));
 
-// Body parsers
+// — Body parsers
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Static uploads
+// — Static uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// MongoDB
+// — MongoDB
 mongoose
   .connect(process.env.MONGO_URI, {
     useNewUrlParser:    true,
@@ -34,27 +33,22 @@ mongoose
   .then(() => console.log('✅ MongoDB connected'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
-// Health check
-app.get('/', (req, res) => res.json({ message: '🚀 Backend up!' }));
+// — Health-check on /api
+app.get('/api', (req, res) => res.json({ message: 'API up!' }));
 
-// Routers
-[
-  { path: '/blogs',    router: blogRoutes    },
-  { path: '/projects', router: projectRoutes },
-  { path: '/messages', router: messageRoutes }
-].forEach(({ path, router }) => {
-  app.use(path, router);
-  app.use(`/api${path}`, router);
-});
+// — Mount all of your API routers under /api/*
+app.use('/api/blogs',    blogRoutes);
+app.use('/api/projects', projectRoutes);
+app.use('/api/messages', messageRoutes);
 
-// 404 & error handlers
+// — 404 & error handlers
 app.use((req, res) => res.status(404).json({ error: 'Route not found' }));
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Server start / export
+// — Server start / export
 module.exports = app;
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
