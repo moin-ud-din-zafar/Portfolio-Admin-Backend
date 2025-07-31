@@ -1,9 +1,9 @@
-// src/controllers/blogcontroller.js
+// controllers/blogcontroller.js
 const Blog   = require('../models/Blog');
 const multer = require('multer');
 const path   = require('path');
 
-// ——— Multer setup — store uploads in /uploads with a timestamped filename
+// Multer setup
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
   filename:    (req, file, cb) => {
@@ -13,33 +13,28 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage }).single('file');
 
-/**
- * POST /api/blogroutes/
- * Creates a new blog post with an uploaded image.
- */
+// Create with image
 exports.createWithImage = [
-  // 1. Run multer middleware
   (req, res, next) => {
     upload(req, res, err => {
       if (err instanceof multer.MulterError) {
-        // Multer-specific errors
         return res.status(400).json({ error: 'Upload error', details: err.message });
       } else if (err) {
-        // Unknown errors
         return res.status(500).json({ error: 'Server error during file upload' });
       }
       next();
     });
   },
+  async (req, res, next) => {
+    console.log('→ [createWithImage] payload:', {
+      file: req.file?.filename,
+      body: req.body
+    });
 
-  // 2. Controller logic
-  async (req, res) => {
-    // Validate presence of file
     if (!req.file) {
       return res.status(400).json({ error: 'Image file is required' });
     }
 
-    // Parse tags (JSON string or comma-separated)
     let tags = [];
     if (req.body.tags) {
       try {
@@ -50,17 +45,13 @@ exports.createWithImage = [
     }
 
     const { title, excerpt, content, publishDate } = req.body;
-
-    // Basic field validation
     if (!title || !excerpt || !content || !publishDate) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Compute read time (@ ~200 wpm)
     const wordCount = content.trim().split(/\s+/).length;
     const readTime  = `${Math.ceil(wordCount / 200)} min read`;
 
-    // Prepare new blog data
     const newBlogData = {
       title,
       excerpt,
@@ -76,60 +67,55 @@ exports.createWithImage = [
     try {
       const newBlog = new Blog(newBlogData);
       const saved   = await newBlog.save();
-      return res.status(201).json(saved);
+      console.log('→ [createWithImage] saved blog ID:', saved._id);
+      res.status(201).json(saved);
     } catch (err) {
-      // Mongoose validation errors
       if (err.name === 'ValidationError') {
         const messages = Object.values(err.errors).map(e => e.message);
         return res.status(400).json({ error: 'Validation failed', details: messages });
       }
-      console.error('Error saving blog:', err);
-      return res.status(500).json({ error: 'Internal server error' });
+      console.error('!! [createWithImage] error saving:', err);
+      next(err);
     }
   }
 ];
 
-/**
- * GET /api/blogroutes/
- * Returns all blog posts, sorted by publishDate descending.
- */
-exports.getAll = async (req, res) => {
+// GET all
+exports.getAll = async (req, res, next) => {
+  console.log('→ [getAll] fetching all blogs');
   try {
     const blogs = await Blog.find()
       .sort({ publishDate: -1 })
       .select('-__v');
-    res.json(blogs);
+    console.log('→ [getAll] count:', blogs.length);
+    res.status(200).json(blogs);
   } catch (err) {
-    console.error('Error fetching blogs:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('!! [getAll] error fetching:', err);
+    next(err);
   }
 };
 
-/**
- * GET /api/blogroutes/:id
- * Returns a single blog post by ID.
- */
-exports.getOne = async (req, res) => {
+// GET one
+exports.getOne = async (req, res, next) => {
+  console.log(`→ [getOne] fetching blog ID ${req.params.id}`);
   try {
     const blog = await Blog.findById(req.params.id).select('-__v');
     if (!blog) {
       return res.status(404).json({ error: 'Blog not found' });
     }
-    res.json(blog);
+    res.status(200).json(blog);
   } catch (err) {
-    console.error(`Error fetching blog ${req.params.id}:`, err);
+    console.error(`!! [getOne] error for ID ${req.params.id}:`, err);
     if (err.kind === 'ObjectId') {
       return res.status(400).json({ error: 'Invalid blog ID' });
     }
-    res.status(500).json({ error: 'Internal server error' });
+    next(err);
   }
 };
 
-/**
- * PUT /api/blogroutes/:id
- * Updates a blog post's fields; recalculates readTime if content changed.
- */
-exports.update = async (req, res) => {
+// UPDATE
+exports.update = async (req, res, next) => {
+  console.log(`→ [update] ID ${req.params.id} payload:`, req.body);
   const updates = { ...req.body };
 
   if (updates.content) {
@@ -147,9 +133,10 @@ exports.update = async (req, res) => {
     if (!updated) {
       return res.status(404).json({ error: 'Blog not found' });
     }
-    res.json(updated);
+    console.log(`→ [update] updated ID ${req.params.id}`);
+    res.status(200).json(updated);
   } catch (err) {
-    console.error(`Error updating blog ${req.params.id}:`, err);
+    console.error(`!! [update] error ID ${req.params.id}:`, err);
     if (err.name === 'ValidationError') {
       const msgs = Object.values(err.errors).map(e => e.message);
       return res.status(400).json({ error: 'Validation failed', details: msgs });
@@ -157,26 +144,25 @@ exports.update = async (req, res) => {
     if (err.kind === 'ObjectId') {
       return res.status(400).json({ error: 'Invalid blog ID' });
     }
-    res.status(500).json({ error: 'Internal server error' });
+    next(err);
   }
 };
 
-/**
- * DELETE /api/blogroutes/:id
- * Deletes a blog post by ID.
- */
-exports.remove = async (req, res) => {
+// DELETE
+exports.remove = async (req, res, next) => {
+  console.log(`→ [remove] deleting ID ${req.params.id}`);
   try {
     const deleted = await Blog.findByIdAndDelete(req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: 'Blog not found' });
     }
-    res.json({ message: 'Blog deleted successfully' });
+    console.log(`→ [remove] deleted ID ${req.params.id}`);
+    res.status(200).json({ message: 'Blog deleted successfully' });
   } catch (err) {
-    console.error(`Error deleting blog ${req.params.id}:`, err);
+    console.error(`!! [remove] error ID ${req.params.id}:`, err);
     if (err.kind === 'ObjectId') {
       return res.status(400).json({ error: 'Invalid blog ID' });
     }
-    res.status(500).json({ error: 'Internal server error' });
+    next(err);
   }
 };
