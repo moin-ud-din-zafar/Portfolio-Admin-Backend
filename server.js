@@ -10,6 +10,12 @@ const messageRoutes = require('./routes/messageroutes');
 
 const app = express();
 
+// — Log every request so we can debug 404s
+app.use((req, res, next) => {
+  console.log(`🔔 ${req.method} ${req.originalUrl}`);
+  next();
+});
+
 // — CORS
 const FRONTEND_URL = 'https://portfolio-admin-frontend-alpha.vercel.app';
 app.use(cors({
@@ -21,7 +27,7 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// — Static uploads
+// — Serve uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // — MongoDB
@@ -33,22 +39,24 @@ mongoose
   .then(() => console.log('✅ MongoDB connected'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
-// — Health-check on /api
-app.get('/api', (req, res) => res.json({ message: 'API up!' }));
+// — Health-check at GET /api
+app.get('/api', (req, res) => {
+  res.json({ message: 'API up!' });
+});
 
-// — Mount all of your API routers under /api/*
+// — Mount routers under /api/*
 app.use('/api/blogs',    blogRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/messages', messageRoutes);
 
-// — 404 & error handlers
+// — 404 & global error handlers
 app.use((req, res) => res.status(404).json({ error: 'Route not found' }));
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// — Server start / export
+// — Export / start
 module.exports = app;
 if (require.main === module) {
   const PORT = process.env.PORT || 5000;
